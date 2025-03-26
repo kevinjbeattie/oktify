@@ -9,6 +9,7 @@ Expected output: Lists of parsed event dicts for export to CSV or terminal.
 """
 
 import os
+import csv
 import requests
 from datetime import datetime, date
 from dotenv import load_dotenv
@@ -22,7 +23,7 @@ API_TOKEN = os.getenv("OKTA_API_TOKEN")
 # --------------------------------------
 # Fetch all users from the Okta API
 # --------------------------------------
-def get_all_users() -> List[Dict[str, Any]]:
+def get_all_users():
     if not OKTA_DOMAIN or not API_TOKEN:
         print("❌ Missing OKTA_DOMAIN or OKTA_API_TOKEN. Check your .env file.")
         return []
@@ -37,26 +38,21 @@ def get_all_users() -> List[Dict[str, Any]]:
         "Accept": "application/json"
     }
 
-    all_users = []
-
+    users = []
     try:
         while url:
             response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                all_users.extend(response.json())
-                # Check if there's a next page
-                url = response.links.get("next", {}).get("url")
-            else:
+            if response.status_code != 200:
                 print(f"❌ Failed to fetch users: {response.text}")
                 break
+            users.extend(response.json())
+            url = response.links.get('next', {}).get('url')
     except requests.exceptions.RequestException as e:
         print(f"❌ Network error while fetching users: {e}")
-        return []
 
-    return all_users
+    return users
 
 # Parses role history for a list of users and extracts role changes.
-# Returns a list of role change dicts within a given date range.
 def parse_role_changes(users: List[Dict[str, Any]], start_date: date, end_date: date) -> List[Dict[str, str]]:
     role_changes: List[Dict[str, str]] = []
 
@@ -69,16 +65,15 @@ def parse_role_changes(users: List[Dict[str, Any]], start_date: date, end_date: 
             try:
                 timestamp = change.get("timestamp")
                 if not timestamp:
-                    continue  # Skip if no timestamp
-
+                    continue
                 change_date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ").date()
                 if not (start_date <= change_date <= end_date):
-                    continue  # Skip if not in range
+                    continue
 
                 prev_role = change.get("previousRoleId")
                 new_role = change.get("newRoleId")
                 if not prev_role or not new_role:
-                    continue  # Skip if roles are missing
+                    continue
 
                 role_changes.append({
                     "user_id": user_id,
@@ -90,12 +85,10 @@ def parse_role_changes(users: List[Dict[str, Any]], start_date: date, end_date: 
 
             except (KeyError, ValueError) as e:
                 print(f"⚠️ Skipping malformed role history entry for user {user_id}: {e}")
-                continue
 
     return role_changes
 
 # Detects user creation and suspension/deactivation events.
-# Returns a list of lifecycle event records within the date range.
 def parse_user_lifecycle_changes(users: List[Dict[str, Any]], start_date: date, end_date: date) -> List[Dict[str, str]]:
     lifecycle_events: List[Dict[str, str]] = []
     for user in users:
@@ -103,7 +96,6 @@ def parse_user_lifecycle_changes(users: List[Dict[str, Any]], start_date: date, 
         user_id = user.get("id", "unknown")
         status = user.get("status")
 
-        # Handle user creation
         created_str = user.get("created")
         try:
             if created_str:
@@ -119,7 +111,6 @@ def parse_user_lifecycle_changes(users: List[Dict[str, Any]], start_date: date, 
         except ValueError as e:
             print(f"⚠️ Invalid created date for user {user_id}: {e}")
 
-        # Handle suspension/deactivation
         if status in ["SUSPENDED", "DEPROVISIONED"]:
             status_changed_str = user.get("statusChanged")
             try:
@@ -139,7 +130,6 @@ def parse_user_lifecycle_changes(users: List[Dict[str, Any]], start_date: date, 
     return lifecycle_events
 
 # Parses group membership change history.
-# Returns a list of group join/leave events within the date range.
 def parse_group_membership_changes(users: List[Dict[str, Any]], start_date: date, end_date: date) -> List[Dict[str, str]]:
     group_changes: List[Dict[str, str]] = []
 
@@ -153,12 +143,11 @@ def parse_group_membership_changes(users: List[Dict[str, Any]], start_date: date
                 timestamp = change.get("timestamp")
                 if not timestamp:
                     continue
-
                 change_date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ").date()
                 if not (start_date <= change_date <= end_date):
                     continue
 
-                action = change.get("action")  # e.g., "ADD" or "REMOVE"
+                action = change.get("action")
                 group = change.get("group")
                 if not action or not group:
                     continue
@@ -173,51 +162,72 @@ def parse_group_membership_changes(users: List[Dict[str, Any]], start_date: date
 
             except (KeyError, ValueError) as e:
                 print(f"⚠️ Skipping malformed group history entry for user {user_id}: {e}")
-                continue
 
     return group_changes
 
-# Parses app assignment or revocation history.
-# Returns a list of app assignment/revocation events within the date range.
+# Pulls app assignment or revocation events from Okta system logs.
 def parse_app_assignments(users: List[Dict[str, Any]], start_date: date, end_date: date) -> List[Dict[str, str]]:
-    app_events: List[Dict[str, str]] = []
+    events: List[Dict[str, str]] = []
 
-    for user in users:
-        email = user.get("profile", {}).get("email", "unknown")
-        user_id = user.get("id", "unknown")
-        app_history = user.get("appHistory", [])
+    if not OKTA_DOMAIN or not API_TOKEN:
+        print("❌ Missing OKTA_DOMAIN or OKTA_API_TOKEN.")
+        return []
 
-        for change in app_history:
-            try:
-                timestamp = change.get("timestamp")
-                if not timestamp:
-                    continue
+    url = f"{OKTA_DOMAIN}/api/v1/logs"
+    headers = {
+        "Authorization": f"SSWS {API_TOKEN}",
+        "Accept": "application/json"
+    }
 
-                change_date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ").date()
-                if not (start_date <= change_date <= end_date):
-                    continue
+    start_ts = start_date.strftime("%Y-%m-%dT00:00:00.000Z")
+    end_ts = end_date.strftime("%Y-%m-%dT23:59:59.999Z")
+    filter_str = (
+        f'eventType eq "application.user_assignment" or '
+        f'eventType eq "application.user_unassignment" and '
+        f'published ge "{start_ts}" and published le "{end_ts}"'
+    )
 
-                action = change.get("action")  # e.g., "ASSIGNED" or "REVOKED"
-                app = change.get("app")
-                if not action or not app:
-                    continue
+    params = {
+        "filter": filter_str,
+        "limit": 1000
+    }
 
-                app_events.append({
-                    "user_id": user_id,
-                    "email": email,
-                    "previous_role_id": "N/A",
-                    "new_role_id": f"App {action}: {app}",
-                    "timestamp": timestamp
-                })
+    try:
+        while url:
+            resp = requests.get(url, headers=headers, params=params)
+            if resp.status_code != 200:
+                print(f"❌ Error fetching app events: {resp.status_code} - {resp.text}")
+                break
 
-            except (KeyError, ValueError) as e:
-                print(f"⚠️ Skipping malformed app history entry for user {user_id}: {e}")
-                continue
+            for entry in resp.json():
+                user_id = "unknown"
+                email = "unknown"
+                app_name = None
+                for target in entry.get("target", []):
+                    if target.get("type") == "User":
+                        user_id = target.get("id")
+                        email = target.get("alternateId")
+                    elif target.get("type") == "AppInstance":
+                        app_name = target.get("displayName")
 
-    return app_events
+                if app_name:
+                    action = "ASSIGNED" if entry["eventType"] == "application.user_assignment" else "REVOKED"
+                    events.append({
+                        "user_id": user_id,
+                        "email": email,
+                        "previous_role_id": "N/A",
+                        "new_role_id": f"App {action}: {app_name}",
+                        "timestamp": entry.get("published")
+                    })
+
+            url = resp.links.get("next", {}).get("url")
+
+    except Exception as e:
+        print(f"❌ Error parsing app assignment events: {e}")
+
+    return events
 
 # Exports role change entries to a CSV file.
-# Accepts a list of dicts and a filename.
 def export_role_changes_to_csv(role_changes: List[Dict[str, str]], filename: str = "role_changes.csv") -> None:
     fieldnames = ["user_id", "email", "previous_role_id", "new_role_id", "timestamp"]
 
