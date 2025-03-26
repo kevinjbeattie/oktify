@@ -14,6 +14,7 @@ List of dicts with user_id, email, previous_role_id, new_role_id (formatted as "
 import unittest
 from datetime import datetime
 from okta_utils import parse_app_assignments
+from typing import List, Dict, Any
 
 class TestAppAssignments(unittest.TestCase):
 

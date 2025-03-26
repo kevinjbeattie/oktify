@@ -1,32 +1,51 @@
 # okta_utils.py
+"""
+Oktify Utilities – okta_utils.py
 
-import requests
-import csv
-from datetime import datetime, date
+This file contains core functions for interacting with the Okta API and
+extracting user, role, group, and app changes within a given time period.
+
+Expected output: Lists of parsed event dicts for export to CSV or terminal.
+"""
+
 import os
+import requests
+from datetime import datetime, date
+from dotenv import load_dotenv
 from typing import List, Dict, Any
 
-# Fetches all users from the Okta API.
-# Returns a list of user objects or an empty list if the request fails.
-def get_all_users() -> List[Dict[str, Any]]:
-    from dotenv import load_dotenv
-    load_dotenv()
+load_dotenv()
 
-    OKTA_DOMAIN = os.getenv("OKTA_DOMAIN")
-    API_TOKEN = os.getenv("OKTA_API_TOKEN")
+OKTA_DOMAIN = os.getenv("OKTA_DOMAIN")
+API_TOKEN = os.getenv("OKTA_API_TOKEN")
+
+# --------------------------------------
+# Fetch all users from the Okta API
+# --------------------------------------
+def get_all_users():
+    if not OKTA_DOMAIN or not API_TOKEN:
+        print("❌ Missing OKTA_DOMAIN or OKTA_API_TOKEN. Check your .env file.")
+        return []
+
+    if not OKTA_DOMAIN.startswith("http"):
+        print("❌ Invalid OKTA_DOMAIN format. Must include 'https://'.")
+        return []
 
     url = f"{OKTA_DOMAIN}/api/v1/users"
     headers = {
-        'Authorization': f'SSWS {API_TOKEN}',
-        'Accept': 'application/json'
+        "Authorization": f"SSWS {API_TOKEN}",
+        "Accept": "application/json"
     }
 
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"❌ Failed to fetch users: {e}")
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"❌ Failed to fetch users: {response.text}")
+            return []
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network error while fetching users: {e}")
         return []
 
 # Parses role history for a list of users and extracts role changes.
