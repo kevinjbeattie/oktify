@@ -22,7 +22,7 @@ API_TOKEN = os.getenv("OKTA_API_TOKEN")
 # --------------------------------------
 # Fetch all users from the Okta API
 # --------------------------------------
-def get_all_users():
+def get_all_users() -> List[Dict[str, Any]]:
     if not OKTA_DOMAIN or not API_TOKEN:
         print("❌ Missing OKTA_DOMAIN or OKTA_API_TOKEN. Check your .env file.")
         return []
@@ -37,16 +37,23 @@ def get_all_users():
         "Accept": "application/json"
     }
 
+    all_users = []
+
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"❌ Failed to fetch users: {response.text}")
-            return []
+        while url:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                all_users.extend(response.json())
+                # Check if there's a next page
+                url = response.links.get("next", {}).get("url")
+            else:
+                print(f"❌ Failed to fetch users: {response.text}")
+                break
     except requests.exceptions.RequestException as e:
         print(f"❌ Network error while fetching users: {e}")
         return []
+
+    return all_users
 
 # Parses role history for a list of users and extracts role changes.
 # Returns a list of role change dicts within a given date range.
