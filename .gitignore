@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+
+# CSV or log outputs
+*.csv
+*.log
+
+# Test artifacts
+htmlcov/
+.coverage
+.cache/
+pytest_cache/
+
+# Misc
+*.swp
+*.bak
+*.tmp
