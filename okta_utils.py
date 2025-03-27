@@ -108,10 +108,17 @@ def fetch_admin_role_assignments(start_date: date, end_date: date) -> List[Dict[
 
             logs = response.json()
             for event in logs:
+                timestamp = event.get("published", "")
+                try:
+                    event_date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ").date()
+                    if not (start_date <= event_date <= end_date):
+                        continue
+                except Exception:
+                    continue
+
                 actor = event.get("actor", {})
                 target = event.get("target", [])
                 outcome = event.get("outcome", {}).get("result", "")
-                timestamp = event.get("published", "")
 
                 for t in target:
                     if t.get("type") == "User":

@@ -1,5 +1,3 @@
-# tests/test_cli.py
-
 import unittest
 from unittest import mock
 from io import StringIO
@@ -11,32 +9,39 @@ class TestOktifyCLI(unittest.TestCase):
 
     @mock.patch("builtins.print")
     @mock.patch("run.get_all_users")
-    @mock.patch("run.parse_role_changes")
+    @mock.patch("run.fetch_admin_role_assignments")
     @mock.patch("run.export_role_changes_to_csv")
-    def test_roles_command_prints_expected_output(self, mock_export, mock_parse, mock_get_users, mock_print):
-        # Mock return values
-        mock_get_users.return_value = [
-            {"id": "user123", "profile": {"email": "test@example.com"}, "roleHistory": []}
-        ]
-        mock_parse.return_value = [
+    def test_roles_command_prints_expected_output(self, mock_export, mock_fetch_roles, mock_get_users, mock_print):
+        # Simulate return value from get_all_users (even if it's unused in fetch_admin_role_assignments now)
+        mock_get_users.return_value = []
+
+        # Provide 2 mock role assignment results
+        mock_fetch_roles.return_value = [
             {
-                "user_id": "user123",
-                "email": "test@example.com",
-                "previous_role_id": "viewer",
-                "new_role_id": "admin",
-                "timestamp": "2024-01-01T00:00:00.000Z"
+                "user_id": "user1",
+                "email": "placeholder@okta.com",
+                "previous_role_id": "N/A",
+                "new_role_id": "Admin Role Unassigned",
+                "timestamp": "2025-03-26T15:51:11.653Z"
+            },
+            {
+                "user_id": "user2",
+                "email": "elena.kim@kjblabs.dev",
+                "previous_role_id": "N/A",
+                "new_role_id": "Admin Role Unassigned",
+                "timestamp": "2025-03-27T17:38:07.201Z"
             }
         ]
 
-        # Simulate CLI arguments
-        test_args = ["run.py", "roles", "--start", "2024-01-01", "--end", "2024-12-31", "--show"]
+        # Simulate CLI args
+        test_args = ["run.py", "roles", "--start", "2025-01-01", "--end", "2025-12-31", "--show"]
         with mock.patch.object(sys, 'argv', test_args):
             run.main()
 
-        # Validate output call
-        mock_print.assert_any_call("✅ Found 1 role change(s). Exporting to CSV...")
+        # Assertions
+        mock_print.assert_any_call("✅ Found 2 admin role change(s). Exporting to CSV...")
         mock_export.assert_called_once()
-        self.assertEqual(mock_parse.call_count, 1)
+        mock_fetch_roles.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
