@@ -33,10 +33,13 @@ from urllib3.exceptions import NotOpenSSLWarning
 from okta_utils import (
     get_all_users,
     fetch_admin_role_assignments,
-    export_role_changes_to_csv,
+    export_group_changes_to_csv,
+    export_admin_role_changes_to_csv,
+    export_app_changes_to_csv,
+    export_user_lifecycle_to_csv,
     parse_user_lifecycle_changes,
     parse_group_membership_changes,
-    parse_app_assignments
+    parse_app_assignments,
 )
 
 # Suppress OpenSSL warning
@@ -69,7 +72,7 @@ def handle_roles(args):
         print(f"✅ Found {len(role_changes)} admin role change(s). Exporting to CSV...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = args.output or f"role_changes_{timestamp}.csv"
-        export_role_changes_to_csv(role_changes, filename=filename)
+        export_admin_role_changes_to_csv(role_changes, filename=filename)
 
         if args.show:
             for rc in role_changes:
@@ -96,7 +99,7 @@ def handle_users(args):
         print(f"✅ Found {len(lifecycle_events)} user lifecycle event(s). Exporting to CSV...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = args.output or f"user_lifecycle_{timestamp}.csv"
-        export_role_changes_to_csv(lifecycle_events, filename=filename)
+        export_user_lifecycle_to_csv(lifecycle_events, filename=filename)
 
         if args.show:
             for event in lifecycle_events:
@@ -109,21 +112,14 @@ def handle_users(args):
 # ----------------------------------------
 def handle_groups(args):
     start_date, end_date = parse_date_range(args)
-    print("🔄 Fetching users from Okta...")
-    users = get_all_users()
-
-    if not users:
-        print("⚠️ No users returned from Okta API.")
-        exit(1)
-
-    print(f"✅ Retrieved {len(users)} user(s). Parsing group membership changes...")
-    group_changes = parse_group_membership_changes(users, start_date, end_date)
+    print("🔄 Fetching group membership changes from Okta system logs...")
+    group_changes = parse_group_membership_changes(start_date, end_date)
 
     if group_changes:
         print(f"✅ Found {len(group_changes)} group membership change(s). Exporting to CSV...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = args.output or f"group_changes_{timestamp}.csv"
-        export_role_changes_to_csv(group_changes, filename=filename)
+        export_group_changes_to_csv(group_changes, filename=filename)  # ✅ updated
 
         if args.show:
             for change in group_changes:
@@ -137,6 +133,7 @@ def handle_groups(args):
 def handle_apps(args):
     start_date, end_date = parse_date_range(args)
     print("🔄 Fetching users from Okta...")
+
     users = get_all_users()
 
     if not users:
@@ -144,13 +141,14 @@ def handle_apps(args):
         exit(1)
 
     print(f"✅ Retrieved {len(users)} user(s). Parsing app assignments...")
+    # Fetching app assignment changes for the date range
     app_changes = parse_app_assignments(users, start_date, end_date)
 
     if app_changes:
         print(f"✅ Found {len(app_changes)} app assignment change(s). Exporting to CSV...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = args.output or f"app_changes_{timestamp}.csv"
-        export_role_changes_to_csv(app_changes, filename=filename)
+        export_app_changes_to_csv(app_changes, filename=filename)  # Correct export function
 
         if args.show:
             for change in app_changes:

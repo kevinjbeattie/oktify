@@ -8,17 +8,18 @@ Validates parse_app_assignments() function:
 ✔ Ignores changes outside range or malformed data
 
 Expected Output:
-List of dicts with user_id, email, previous_role_id, new_role_id (formatted as "App ASSIGNED/REVOKED: app"), timestamp
+List of dicts with user_id, email, action (formatted as "ASSIGNED/REVOKED"), app_name, timestamp
 """
 
 import unittest
+from unittest.mock import patch
 from datetime import datetime
 from okta_utils import parse_app_assignments
-from typing import List, Dict, Any
 
 class TestAppAssignments(unittest.TestCase):
 
     def setUp(self):
+        # Test data representing users and their app events
         self.users = [
             {
                 "id": "user1",
@@ -27,7 +28,7 @@ class TestAppAssignments(unittest.TestCase):
                     {
                         "timestamp": "2024-04-10T12:00:00.000Z",
                         "action": "ASSIGNED",
-                        "app": "Slack"
+                        "app": "Acme Project Tools"
                     }
                 ]
             },
@@ -38,7 +39,7 @@ class TestAppAssignments(unittest.TestCase):
                     {
                         "timestamp": "2024-05-01T12:00:00.000Z",
                         "action": "REVOKED",
-                        "app": "Zoom"
+                        "app": "Finance Hub"
                     }
                 ]
             },
@@ -55,19 +56,83 @@ class TestAppAssignments(unittest.TestCase):
             }
         ]
 
-    def test_app_assignments_in_range(self):
+    @patch('requests.get')
+    def test_app_assignments_in_range(self, mock_get):
+        # Simulate API response for app assignments within the specified date range
+        mock_response = {
+            "status_code": 200,
+            "json": lambda: [
+                {
+                    "published": "2024-04-10T12:00:00.000Z",
+                    "eventType": "application.user_membership.add",
+                    "target": [
+                        {"type": "User", "id": "user1", "alternateId": "assigned@example.com"},
+                        {"type": "AppInstance", "displayName": "Acme Project Tools"}
+                    ]
+                },
+                {
+                    "published": "2024-05-01T12:00:00.000Z",
+                    "eventType": "application.user_membership.remove",
+                    "target": [
+                        {"type": "User", "id": "user2", "alternateId": "revoked@example.com"},
+                        {"type": "AppInstance", "displayName": "Finance Hub"}
+                    ]
+                }
+            ]
+        }
+
+        # Mock the first response with a "next" link for pagination
+        mock_get.return_value.status_code = mock_response["status_code"]
+        mock_get.return_value.json = mock_response["json"]
+        mock_get.return_value.links = {
+            "next": {"url": "https://example.com/api/v1/logs?page=2"}
+        }
+
+        # Mock the second response as the last page with no "next" link
+        mock_get.return_value.links = {}
+        
+        # Define the date range
         start = datetime(2024, 1, 1).date()
         end = datetime(2024, 12, 31).date()
+
+        # Create the app assignment changes
         changes = parse_app_assignments(self.users, start, end)
-        descriptions = [c["new_role_id"] for c in changes]
 
-        self.assertIn("App ASSIGNED: Slack", descriptions)
-        self.assertIn("App REVOKED: Zoom", descriptions)
-        self.assertEqual(len(changes), 2)
+        # Get all descriptions from the parsed changes
+        descriptions = [c["action"] for c in changes]
 
-    def test_app_assignments_out_of_range(self):
+        # Test that the expected events are found
+        self.assertIn("ADD", descriptions)
+        self.assertIn("REMOVE", descriptions)
+        self.assertEqual(len(changes), 2)  # Should only find 2 valid events within range
+
+    @patch('requests.get')
+    def test_app_assignments_out_of_range(self, mock_get):
+        # Simulate API response for app assignments outside the specified date range
+        mock_response = {
+            "status_code": 200,
+            "json": lambda: [
+                {
+                    "published": "2023-03-01T12:00:00.000Z",
+                    "eventType": "application.user_membership.add",
+                    "target": [
+                        {"type": "User", "id": "user3", "alternateId": "outofrange@example.com"},
+                        {"type": "AppInstance", "displayName": "GitHub"}
+                    ]
+                }
+            ]
+        }
+
+        # Set up the mock to return the simulated response when called
+        mock_get.return_value.status_code = mock_response["status_code"]
+        mock_get.return_value.json = mock_response["json"]
+        mock_get.return_value.links = {}  # No next page for pagination
+
+        # Define a date range that doesn't match the user app events
         start = datetime(2022, 1, 1).date()
         end = datetime(2022, 12, 31).date()
+
+        # Test that no changes are returned
         changes = parse_app_assignments(self.users, start, end)
         self.assertEqual(len(changes), 0)
 

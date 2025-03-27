@@ -12,63 +12,89 @@ List of dicts with user_id, email, previous_role_id, new_role_id (formatted as "
 """
 
 import unittest
-from datetime import datetime
+from unittest.mock import patch
+from datetime import datetime, date
 from okta_utils import parse_group_membership_changes
 
 class TestGroupMembershipParsing(unittest.TestCase):
 
     def setUp(self):
-        self.users = [
+        self.mock_log_response = [
             {
-                "id": "user1",
-                "profile": {"email": "add@example.com"},
-                "groupHistory": [
+                "published": "2024-05-10T12:00:00.000Z",
+                "eventType": "group.user_membership.add",
+                "target": [
                     {
-                        "timestamp": "2024-05-10T12:00:00.000Z",
-                        "action": "ADD",
-                        "group": "marketing"
+                        "id": "user1",
+                        "type": "User",
+                        "alternateId": "add@example.com"
+                    },
+                    {
+                        "id": "group1",
+                        "type": "UserGroup",
+                        "displayName": "marketing"
                     }
                 ]
             },
             {
-                "id": "user2",
-                "profile": {"email": "remove@example.com"},
-                "groupHistory": [
+                "published": "2024-06-01T12:00:00.000Z",
+                "eventType": "group.user_membership.remove",
+                "target": [
                     {
-                        "timestamp": "2024-06-01T12:00:00.000Z",
-                        "action": "REMOVE",
-                        "group": "finance"
+                        "id": "user2",
+                        "type": "User",
+                        "alternateId": "remove@example.com"
+                    },
+                    {
+                        "id": "group2",
+                        "type": "UserGroup",
+                        "displayName": "finance"
                     }
                 ]
             },
             {
-                "id": "user3",
-                "profile": {"email": "outofrange@example.com"},
-                "groupHistory": [
+                "published": "2023-01-01T12:00:00.000Z",
+                "eventType": "group.user_membership.add",
+                "target": [
                     {
-                        "timestamp": "2023-01-01T12:00:00.000Z",
-                        "action": "ADD",
-                        "group": "sales"
+                        "id": "user3",
+                        "type": "User",
+                        "alternateId": "outofrange@example.com"
+                    },
+                    {
+                        "id": "group3",
+                        "type": "UserGroup",
+                        "displayName": "sales"
                     }
                 ]
             }
         ]
 
-    def test_group_changes_in_range(self):
-        start = datetime(2024, 1, 1).date()
-        end = datetime(2024, 12, 31).date()
-        changes = parse_group_membership_changes(self.users, start, end)
+    @patch("okta_utils.requests.get")
+    def test_group_changes_in_range(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = self.mock_log_response
+        mock_get.return_value.links = {}
 
-        descriptions = [c["new_role_id"] for c in changes]
-        self.assertIn("Group ADD: marketing", descriptions)
-        self.assertIn("Group REMOVE: finance", descriptions)
+        start = date(2024, 1, 1)
+        end = date(2024, 12, 31)
+        changes = parse_group_membership_changes(start, end)
+
+        group_names = [c["group_name"] for c in changes]
+        self.assertIn("marketing", group_names)
+        self.assertIn("finance", group_names)
         self.assertEqual(len(changes), 2)
 
-    def test_group_changes_out_of_range(self):
-        start = datetime(2022, 1, 1).date()
-        end = datetime(2022, 12, 31).date()
-        changes = parse_group_membership_changes(self.users, start, end)
+    @patch("okta_utils.requests.get")
+    def test_group_changes_out_of_range(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = self.mock_log_response
+        mock_get.return_value.links = {}
+
+        start = date(2022, 1, 1)
+        end = date(2022, 12, 31)
+        changes = parse_group_membership_changes(start, end)
         self.assertEqual(len(changes), 0)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

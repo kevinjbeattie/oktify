@@ -1,8 +1,23 @@
-import unittest
+#tests/test_cli.py
+"""
+Tests: Oktify CLI (run.py)
+
+Validates CLI subcommand behavior:
+✔ Verifies 'roles' subcommand executes with mocked inputs
+✔ Confirms CSV export function is called
+✔ Asserts expected print output in terminal
+
+Tested Components:
+- run.main()
+- handle_roles()
+- export_admin_role_changes_to_csv()
+"""
+
+import unittest, sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from unittest import mock
 from io import StringIO
 import sys
-
 import run  # Imports your main CLI logic
 
 class TestOktifyCLI(unittest.TestCase):
@@ -10,7 +25,7 @@ class TestOktifyCLI(unittest.TestCase):
     @mock.patch("builtins.print")
     @mock.patch("run.get_all_users")
     @mock.patch("run.fetch_admin_role_assignments")
-    @mock.patch("run.export_role_changes_to_csv")
+    @mock.patch("run.export_admin_role_changes_to_csv")
     def test_roles_command_prints_expected_output(self, mock_export, mock_fetch_roles, mock_get_users, mock_print):
         # Simulate return value from get_all_users (even if it's unused in fetch_admin_role_assignments now)
         mock_get_users.return_value = []

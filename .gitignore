@@ -33,3 +33,6 @@ pytest_cache/
 *.swp
 *.bak
 *.tmp
+
+#Ignore egg-info directories
+*.egg-info

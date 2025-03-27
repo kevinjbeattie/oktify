@@ -11,7 +11,8 @@ Expected Output:
 List of dicts with user_id, email, previous_role_id, new_role_id, timestamp
 """
 
-import unittest
+import unittest, sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from datetime import datetime
 from okta_utils import parse_user_lifecycle_changes
 

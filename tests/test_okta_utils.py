@@ -1,4 +1,19 @@
-import unittest
+#tests/test_okta_utils.py
+"""
+Tests: Okta Utilities
+
+Validates Okta API utility functions:
+✔ Tests behavior of fetch_admin_role_assignments() with mocked response
+✔ Confirms retry logic on rate limits
+✔ Handles error conditions and malformed inputs
+
+Tested Components:
+- fetch_admin_role_assignments()
+- Supporting utilities for system log parsing
+"""
+
+import unittest, sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from datetime import datetime
 from unittest.mock import patch
 from okta_utils import fetch_admin_role_assignments
