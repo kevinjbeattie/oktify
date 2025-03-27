@@ -14,7 +14,7 @@
 Oktify – run.py
 
 Main entrypoint for the Oktify CLI tool. Supports the following subcommands:
-  - roles: Track role ID changes
+  - roles: Track administrator role assignments/unassignments
   - users: Track user creation and suspension events
   - groups: Track group membership changes (join/leave)
   - apps: Track app assignment or revocation actions
@@ -24,9 +24,6 @@ Arguments:
   --end YYYY-MM-DD     Required. End of date filter range.
   --output             Optional. Custom output filename.
   --show               Optional. Display output in terminal.
-
-Each subcommand fetches users from the Okta API, parses relevant changes,
-and exports the filtered results to a timestamped CSV file.
 """
 
 import argparse
@@ -35,17 +32,19 @@ from datetime import datetime
 from urllib3.exceptions import NotOpenSSLWarning
 from okta_utils import (
     get_all_users,
-    parse_role_changes,
+    fetch_admin_role_assignments,
     export_role_changes_to_csv,
     parse_user_lifecycle_changes,
     parse_group_membership_changes,
     parse_app_assignments
 )
 
-# Suppress OpenSSL warning if present
+# Suppress OpenSSL warning
 warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 
-# Shared date parsing logic
+# ----------------------------------------
+# Utility: Validate and parse input dates
+# ----------------------------------------
 def parse_date_range(args):
     try:
         start_date = datetime.strptime(args.start, "%Y-%m-%d").date()
@@ -58,21 +57,16 @@ def parse_date_range(args):
         print(f"❌ Invalid date format: {ve}")
         exit(1)
 
-# Subcommand: roles
+# ----------------------------------------
+# Subcommand: roles (admin role changes)
+# ----------------------------------------
 def handle_roles(args):
     start_date, end_date = parse_date_range(args)
-    print("🔄 Fetching users from Okta...")
-    users = get_all_users()
-
-    if not users:
-        print("⚠️ No users returned from Okta API.")
-        exit(1)
-
-    print(f"✅ Retrieved {len(users)} user(s). Parsing role changes between {start_date} and {end_date}...")
-    role_changes = parse_role_changes(users, start_date, end_date)
+    print("🔄 Fetching admin role events from Okta system logs...")
+    role_changes = fetch_admin_role_assignments(start_date, end_date)
 
     if role_changes:
-        print(f"✅ Found {len(role_changes)} role change(s). Exporting to CSV...")
+        print(f"✅ Found {len(role_changes)} admin role change(s). Exporting to CSV...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = args.output or f"role_changes_{timestamp}.csv"
         export_role_changes_to_csv(role_changes, filename=filename)
@@ -81,9 +75,11 @@ def handle_roles(args):
             for rc in role_changes:
                 print(rc)
     else:
-        print("ℹ️ No role changes found in the given time period.")
+        print("ℹ️ No admin role changes found in the given time period.")
 
+# ----------------------------------------
 # Subcommand: users
+# ----------------------------------------
 def handle_users(args):
     start_date, end_date = parse_date_range(args)
     print("🔄 Fetching users from Okta...")
@@ -108,7 +104,9 @@ def handle_users(args):
     else:
         print("ℹ️ No user lifecycle events found in the given time period.")
 
+# ----------------------------------------
 # Subcommand: groups
+# ----------------------------------------
 def handle_groups(args):
     start_date, end_date = parse_date_range(args)
     print("🔄 Fetching users from Okta...")
@@ -133,7 +131,9 @@ def handle_groups(args):
     else:
         print("ℹ️ No group membership changes found in the given time period.")
 
+# ----------------------------------------
 # Subcommand: apps
+# ----------------------------------------
 def handle_apps(args):
     start_date, end_date = parse_date_range(args)
     print("🔄 Fetching users from Okta...")
@@ -158,20 +158,22 @@ def handle_apps(args):
     else:
         print("ℹ️ No app assignment changes found in the given time period.")
 
-# CLI setup
+# ----------------------------------------
+# CLI Setup
+# ----------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="Oktify: Track and audit Okta changes from the command line.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # roles command
-    roles_parser = subparsers.add_parser("roles", help="List user role changes in a given date range")
+    # Roles
+    roles_parser = subparsers.add_parser("roles", help="List admin role changes via system log events")
     roles_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     roles_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
     roles_parser.add_argument("--output", help="Optional output filename")
     roles_parser.add_argument("--show", action="store_true", help="Also print results to terminal")
     roles_parser.set_defaults(func=handle_roles)
 
-    # users command
+    # Users
     users_parser = subparsers.add_parser("users", help="Track user creation and suspension events")
     users_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     users_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
@@ -179,7 +181,7 @@ def main():
     users_parser.add_argument("--show", action="store_true", help="Also print results to terminal")
     users_parser.set_defaults(func=handle_users)
 
-    # groups command
+    # Groups
     groups_parser = subparsers.add_parser("groups", help="Track group membership changes")
     groups_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     groups_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
@@ -187,7 +189,7 @@ def main():
     groups_parser.add_argument("--show", action="store_true", help="Also print results to terminal")
     groups_parser.set_defaults(func=handle_groups)
 
-    # apps command
+    # Apps
     apps_parser = subparsers.add_parser("apps", help="Track user app assignments or revocations")
     apps_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
     apps_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
@@ -195,6 +197,7 @@ def main():
     apps_parser.add_argument("--show", action="store_true", help="Also print results to terminal")
     apps_parser.set_defaults(func=handle_apps)
 
+    # Execute CLI
     args = parser.parse_args()
     args.func(args)
 
